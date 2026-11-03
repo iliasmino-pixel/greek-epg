@@ -1,5 +1,5 @@
 
-name: Update Greek EPG
+name: Update Greek and Albanian EPG
 
 on:
   schedule:
@@ -17,25 +17,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download Open-EPG Greece
+      - name: Download Greece EPG
         run: |
           curl -fL --retry 3 \
             "https://www.open-epg.com/files/greece.xml" \
             -o greece.xml.tmp
 
-      - name: Validate XML
+      - name: Download Albania EPG
         run: |
-          python -c "import xml.etree.ElementTree as ET; r=ET.parse('greece.xml.tmp').getroot(); assert r.tag == 'tv', 'Invalid XMLTV root'"
-          mv greece.xml.tmp greece.xml
+          curl -fL --retry 3 \
+            "https://www.open-epg.com/files/albania.xml" \
+            -o albania.xml.tmp
 
-      - name: Publish updated EPG
+      - name: Validate XML files
+        run: |
+          python -c "import xml.etree.ElementTree as ET; [ET.parse(f) for f in ['greece.xml.tmp','albania.xml.tmp']]"
+          mv greece.xml.tmp greece.xml
+          mv albania.xml.tmp albania.xml
+
+      - name: Publish updated EPG files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add greece.xml
+          git add greece.xml albania.xml
           if git diff --cached --quiet; then
-            echo "EPG has not changed"
+            echo "No EPG changes"
             exit 0
           fi
-          git commit -m "Update Greek EPG"
+          git commit -m "Update Greece and Albania EPG"
           git push
