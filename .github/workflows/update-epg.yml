@@ -1,5 +1,5 @@
 
-name: Update Greek and Albanian EPG
+name: Update Combined EPG
 
 on:
   schedule:
@@ -17,32 +17,59 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download Greece EPG
+      - name: Download Greece
         run: |
           curl -fL --retry 3 \
-            "https://www.open-epg.com/files/greece.xml" \
-            -o greece.xml.tmp
+            https://www.open-epg.com/files/greece.xml \
+            -o greece.xml
 
-      - name: Download Albania EPG
+      - name: Download Albania
         run: |
           curl -fL --retry 3 \
-            "https://www.open-epg.com/files/albania.xml" \
-            -o albania.xml.tmp
+            https://www.open-epg.com/files/albania.xml \
+            -o albania.xml
 
-      - name: Validate XML files
+      - name: Merge EPG files
         run: |
-          python -c "import xml.etree.ElementTree as ET; [ET.parse(f) for f in ['greece.xml.tmp','albania.xml.tmp']]"
-          mv greece.xml.tmp greece.xml
-          mv albania.xml.tmp albania.xml
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
 
-      - name: Publish updated EPG files
+          merged = ET.Element("tv")
+          seen_channels = set()
+
+          for filename in ("greece.xml", "albania.xml"):
+              root = ET.parse(filename).getroot()
+
+              for element in root:
+                  if element.tag == "channel":
+                      channel_id = element.get("id")
+                      if channel_id in seen_channels:
+                          continue
+                      seen_channels.add(channel_id)
+
+                  if element.tag in ("channel", "programme"):
+                      merged.append(element)
+
+          ET.indent(merged, space="  ")
+          ET.ElementTree(merged).write(
+              "combined.xml",
+              encoding="UTF-8",
+              xml_declaration=True
+          )
+          PY
+
+      - name: Validate combined EPG
+        run: |
+          python -c "import xml.etree.ElementTree as ET; r=ET.parse('combined.xml').getroot(); assert r.tag == 'tv'; assert len(r.findall('programme')) > 0"
+
+      - name: Publish
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add greece.xml albania.xml
+          git add greece.xml albania.xml combined.xml
           if git diff --cached --quiet; then
-            echo "No EPG changes"
+            echo "No changes"
             exit 0
           fi
-          git commit -m "Update Greece and Albania EPG"
+          git commit -m "Update combined Greek and Albanian EPG"
           git push
